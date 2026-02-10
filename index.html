@@ -101,11 +101,40 @@
     return { latest, map };
   }
 
-  async function loadRatesList() {
-    const res = await fetch("rates.json?ts=" + Date.now());
-    if (!res.ok) throw new Error("Impossible de charger rates.json (HTTP " + res.status + ")");
-    return await res.json();
+async function loadRatesList() {
+  const candidates = [];
+
+  // 1) chemins relatifs classiques
+  candidates.push("rates.json");
+  candidates.push("./rates.json");
+
+  // 2) chemin “base du dossier courant”
+  const baseFolder = window.location.origin + window.location.pathname.replace(/[^/]*$/, "");
+  candidates.push(baseFolder + "rates.json");
+
+  // 3) au cas où (rare) : remonter d’un niveau
+  candidates.push("../rates.json");
+
+  let lastErr = null;
+
+  for (const u of candidates) {
+    const url = new URL(u, window.location.href);
+    url.searchParams.set("ts", Date.now().toString());
+
+    try {
+      const res = await fetch(url.toString(), { cache: "no-store" });
+      if (res.ok) {
+        setStatus("rates.json chargé depuis: " + url.toString());
+        return await res.json();
+      }
+      lastErr = "HTTP " + res.status + " sur " + url.toString();
+    } catch (e) {
+      lastErr = (e && e.message ? e.message : String(e)) + " sur " + url.toString();
+    }
   }
+
+  throw new Error("Impossible de charger rates.json. Dernier essai: " + lastErr);
+}
 
   async function loadOneRate(rate) {
     const res = await fetch(rate.url, { cache: "no-store" });
