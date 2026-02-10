@@ -9,13 +9,11 @@
     .box { max-width: 1100px; }
     table { border-collapse: collapse; width: 100%; margin-top: 12px; }
     th, td { border-bottom: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: top; }
-    select, input { padding: 8px; font-size: 14px; }
+    input, select { padding: 8px; font-size: 14px; }
     .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
     .muted { color: #666; font-size: 13px; margin-top: 6px; }
     .pill { display:inline-block; padding:3px 8px; border:1px solid #ddd; border-radius:999px; font-size:12px; }
-    .ok { border-color:#cfc; }
-    .err { border-color:#fcc; }
-    .search { padding: 8px; font-size: 14px; min-width: 260px; }
+    .search { min-width: 260px; }
   </style>
 </head>
 <body>
@@ -23,8 +21,8 @@
     <h1>Taux</h1>
 
     <div class="row">
-      <label for="datePick">Date (mois)</label>
-      <input id="datePick" type="month" />
+      <label for="datePick">Date</label>
+      <input id="datePick" type="date" />
       <input id="search" class="search" placeholder="Filtrer (ex: euribor, ester, swap...)" />
       <span class="pill" id="badge">—</span>
     </div>
@@ -33,7 +31,7 @@
 
     <h2>Derniers cours</h2>
     <table id="latestTable">
-      <thead><tr><th>Taux</th><th>Dernière date</th><th>Dernier cours</th><th>Source</th></tr></thead>
+      <thead><tr><th>Taux</th><th>Dernière date</th><th>Dernier cours</th></tr></thead>
       <tbody></tbody>
     </table>
 
@@ -44,7 +42,8 @@
     </table>
 
     <p class="muted">
-      Ajout d’un taux = ajouter une ligne dans <code>rates.json</code>. Aucun changement de code.
+      Ajout d’un taux = ajouter une ligne dans <code>rates.json</code>.
+      Mensuel (YYYY-MM) ou quotidien (YYYY-MM-DD) : géré automatiquement.
     </p>
   </div>
 
@@ -55,17 +54,39 @@
   const searchEl = document.getElementById("search");
 
   function setStatus(msg) { statusEl.textContent = msg; }
-  function setBadge(text, kind) {
-    badgeEl.textContent = text;
-    badgeEl.className = "pill " + (kind || "");
+  function setBadge(text) { badgeEl.textContent = text; }
+
+  // Affichage DD/MM/YYYY (accepte YYYY-MM ou YYYY-MM-DD)
+  function formatDate(iso) {
+    if (!iso) return "—";
+    const p = iso.split("-");
+    if (p.length === 2) { // YYYY-MM
+      const [y, m] = p;
+      return `01/${m}/${y}`;
+    }
+    if (p.length === 3) { // YYYY-MM-DD
+      const [y, m, d] = p;
+      return `${d}/${m}/${y}`;
+    }
+    return iso;
   }
 
+  // Arrondi 6 décimales
+  function formatNumber(val) {
+    if (val == null || val === "") return "—";
+    const n = Number(val);
+    if (Number.isNaN(n)) return "—";
+    return n.toFixed(6);
+  }
+
+  // Parse CSV ECB : cherche TIME_PERIOD et OBS_VALUE
   function parseCsv(text) {
     const lines = text.trim().split(/\r?\n/);
     const headers = lines[0].split(",");
     const idxTime = headers.indexOf("TIME_PERIOD");
     const idxVal  = headers.indexOf("OBS_VALUE");
     if (idxTime === -1 || idxVal === -1) throw new Error("Colonnes TIME_PERIOD / OBS_VALUE introuvables");
+
     const rows = [];
     for (let i = 1; i < lines.length; i++) {
       const cols = lines[i].split(",");
@@ -77,7 +98,7 @@
     rows.sort((a,b) => a.time.localeCompare(b.time));
     const latest = rows[rows.length - 1];
     const map = new Map(rows.map(r => [r.time, r.val]));
-    return { rows, latest, map };
+    return { latest, map };
   }
 
   async function loadRatesList() {
@@ -102,26 +123,37 @@
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${r.label}</td>
-          <td>${r.latest?.time ?? "—"}</td>
-          <td>${(r.latest?.val ?? "—").toString()}</td>
-          <td><a href="${r.url}" target="_blank" rel="noreferrer">source</a></td>
+          <td>${formatDate(r.latest?.time)}</td>
+          <td>${formatNumber(r.latest?.val)}</td>
         `;
         tbody.appendChild(tr);
       });
   }
 
-  function renderSelected(list, month, filterText) {
+  // Sélection : on essaie d’abord quotidien (YYYY-MM-DD), sinon mensuel (YYYY-MM)
+  function renderSelected(list, isoDate, filterText) {
     const tbody = document.querySelector("#selectedTable tbody");
     tbody.innerHTML = "";
+
+    const dayKey = isoDate;            // YYYY-MM-DD
+    const monthKey = isoDate.slice(0,7); // YYYY-MM
+
     list
       .filter(r => (r.label + " " + r.id).toLowerCase().includes(filterText))
       .forEach(r => {
-        const val = r.map.get(month);
+        let val = r.map.get(dayKey);
+        let shownKey = dayKey;
+
+        if (val == null) {
+          val = r.map.get(monthKey);
+          shownKey = monthKey;
+        }
+
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${r.label}</td>
-          <td>${month}</td>
-          <td>${(val ?? "—").toString()}</td>
+          <td>${formatDate(shownKey)}</td>
+          <td>${formatNumber(val)}</td>
         `;
         tbody.appendChild(tr);
       });
@@ -135,37 +167,33 @@
 
     setStatus("Chargement des taux (" + rates.length + ")…");
     const loaded = [];
-
-    // Chargement séquentiel (simple). Si tu en as 50+, on optimisera après.
     for (const r of rates) {
-      try {
-        loaded.push(await loadOneRate(r));
-      } catch (e) {
-        loaded.push({ ...r, latest: null, map: new Map(), error: String(e.message || e) });
-      }
+      loaded.push(await loadOneRate(r));
     }
 
-    setBadge("OK", "ok");
+    setBadge("OK");
     setStatus("");
 
-    const maxDate = loaded.map(r => r.latest?.time).filter(Boolean).sort().pop();
-    if (maxDate) datePick.value = maxDate;
+    // Date par défaut = aujourd’hui (si pas dispo, tu peux changer)
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth()+1).padStart(2,"0");
+    const dd = String(today.getDate()).padStart(2,"0");
+    datePick.value = `${yyyy}-${mm}-${dd}`;
 
     const refresh = () => {
       const filterText = (searchEl.value || "").trim().toLowerCase();
       renderLatest(loaded, filterText);
-      const month = datePick.value;
-      if (month) renderSelected(loaded, month, filterText);
+      if (datePick.value) renderSelected(loaded, datePick.value, filterText);
     };
 
     datePick.addEventListener("change", refresh);
     searchEl.addEventListener("input", refresh);
-
     refresh();
   }
 
   main().catch(e => {
-    setBadge("Erreur", "err");
+    setBadge("Erreur");
     setStatus("Erreur: " + (e.message || e));
   });
 </script>
