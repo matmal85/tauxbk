@@ -18,5 +18,20 @@
     "id": "euribor_12m",
     "label": "Euribor 12M",
     "url": "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR12MD_.HSTA?format=csvdata&detail=dataonly"
+  },
+  {
+    "id": "€ster",
+    "label": "€ster",
+    "url": "https://webstat.banque-france.fr/fr/catalogue/estr/ESTR.B.EU000A2X2A25.WT?utm_source=chatgpt.com"
+  },
+    {
+    "id": "SOFR",
+    "label": "SOFR",
+    "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=SOFR"
+  },
+      {
+    "id": "SONIA",
+    "label": "SONIA",
+    "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IUDSOIA"
   }
 ]
