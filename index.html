@@ -3,63 +3,62 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Euribor</title>
+  <title>Taux</title>
   <style>
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
-    .box { max-width: 950px; }
+    .box { max-width: 1100px; }
     table { border-collapse: collapse; width: 100%; margin-top: 12px; }
-    th, td { border-bottom: 1px solid #ddd; padding: 10px; text-align: left; }
+    th, td { border-bottom: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: top; }
     select, input { padding: 8px; font-size: 14px; }
     .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
     .muted { color: #666; font-size: 13px; margin-top: 6px; }
     .pill { display:inline-block; padding:3px 8px; border:1px solid #ddd; border-radius:999px; font-size:12px; }
+    .ok { border-color:#cfc; }
+    .err { border-color:#fcc; }
+    .search { padding: 8px; font-size: 14px; min-width: 260px; }
   </style>
 </head>
 <body>
   <div class="box">
-    <h1>Euribor (ECB)</h1>
+    <h1>Taux</h1>
 
     <div class="row">
       <label for="datePick">Date (mois)</label>
       <input id="datePick" type="month" />
-
-      <label for="seriesPick">Série</label>
-      <select id="seriesPick"></select>
-
+      <input id="search" class="search" placeholder="Filtrer (ex: euribor, ester, swap...)" />
       <span class="pill" id="badge">—</span>
     </div>
 
     <div class="muted" id="status"></div>
 
-    <h2>Dernières valeurs</h2>
+    <h2>Derniers cours</h2>
     <table id="latestTable">
-      <thead><tr><th>Série</th><th>Dernière date</th><th>Dernière valeur</th></tr></thead>
+      <thead><tr><th>Taux</th><th>Dernière date</th><th>Dernier cours</th><th>Source</th></tr></thead>
       <tbody></tbody>
     </table>
 
-    <h2>Valeur à la date sélectionnée</h2>
+    <h2>Cours à la date sélectionnée</h2>
     <table id="selectedTable">
-      <thead><tr><th>Série</th><th>Date</th><th>Valeur</th></tr></thead>
+      <thead><tr><th>Taux</th><th>Date</th><th>Cours</th></tr></thead>
       <tbody></tbody>
     </table>
 
-    <p class="muted">Source : ECB SDMX API (csvdata)</p>
+    <p class="muted">
+      Ajout d’un taux = ajouter une ligne dans <code>rates.json</code>. Aucun changement de code.
+    </p>
   </div>
 
 <script>
-  const SERIES = [
-    { id: "euribor_1m",  label: "Euribor 1M",  url: "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR1MD_.HSTA?format=csvdata&detail=dataonly" },
-    { id: "euribor_3m",  label: "Euribor 3M",  url: "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR3MD_.HSTA?format=csvdata&detail=dataonly" },
-    { id: "euribor_6m",  label: "Euribor 6M",  url: "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR6MD_.HSTA?format=csvdata&detail=dataonly" },
-    { id: "euribor_12m", label: "Euribor 12M", url: "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR12MD_.HSTA?format=csvdata&detail=dataonly" },
-  ];
-
+  const badgeEl = document.getElementById("badge");
   const statusEl = document.getElementById("status");
-  const badgeEl  = document.getElementById("badge");
-  const seriesPick = document.getElementById("seriesPick");
   const datePick = document.getElementById("datePick");
+  const searchEl = document.getElementById("search");
 
   function setStatus(msg) { statusEl.textContent = msg; }
+  function setBadge(text, kind) {
+    badgeEl.textContent = text;
+    badgeEl.className = "pill " + (kind || "");
+  }
 
   function parseCsv(text) {
     const lines = text.trim().split(/\r?\n/);
@@ -69,4 +68,106 @@
     if (idxTime === -1 || idxVal === -1) throw new Error("Colonnes TIME_PERIOD / OBS_VALUE introuvables");
     const rows = [];
     for (let i = 1; i < lines.length; i++) {
-      const cols =
+      const cols = lines[i].split(",");
+      const time = cols[idxTime];
+      const valStr = cols[idxVal];
+      const val = (valStr === "" || valStr == null) ? null : Number(valStr);
+      if (time) rows.push({ time, val });
+    }
+    rows.sort((a,b) => a.time.localeCompare(b.time));
+    const latest = rows[rows.length - 1];
+    const map = new Map(rows.map(r => [r.time, r.val]));
+    return { rows, latest, map };
+  }
+
+  async function loadRatesList() {
+    const res = await fetch("rates.json", { cache: "no-store" });
+    if (!res.ok) throw new Error("Impossible de charger rates.json (HTTP " + res.status + ")");
+    return await res.json();
+  }
+
+  async function loadOneRate(rate) {
+    const res = await fetch(rate.url, { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const { latest, map } = parseCsv(await res.text());
+    return { ...rate, latest, map };
+  }
+
+  function renderLatest(list, filterText) {
+    const tbody = document.querySelector("#latestTable tbody");
+    tbody.innerHTML = "";
+    list
+      .filter(r => (r.label + " " + r.id).toLowerCase().includes(filterText))
+      .forEach(r => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${r.label}</td>
+          <td>${r.latest?.time ?? "—"}</td>
+          <td>${(r.latest?.val ?? "—").toString()}</td>
+          <td><a href="${r.url}" target="_blank" rel="noreferrer">source</a></td>
+        `;
+        tbody.appendChild(tr);
+      });
+  }
+
+  function renderSelected(list, month, filterText) {
+    const tbody = document.querySelector("#selectedTable tbody");
+    tbody.innerHTML = "";
+    list
+      .filter(r => (r.label + " " + r.id).toLowerCase().includes(filterText))
+      .forEach(r => {
+        const val = r.map.get(month);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${r.label}</td>
+          <td>${month}</td>
+          <td>${(val ?? "—").toString()}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+  }
+
+  async function main() {
+    setBadge("Chargement…");
+    setStatus("Lecture de rates.json…");
+
+    const rates = await loadRatesList();
+
+    setStatus("Chargement des taux (" + rates.length + ")…");
+    const loaded = [];
+
+    // Chargement séquentiel (simple). Si tu en as 50+, on optimisera après.
+    for (const r of rates) {
+      try {
+        loaded.push(await loadOneRate(r));
+      } catch (e) {
+        loaded.push({ ...r, latest: null, map: new Map(), error: String(e.message || e) });
+      }
+    }
+
+    setBadge("OK", "ok");
+    setStatus("");
+
+    const maxDate = loaded.map(r => r.latest?.time).filter(Boolean).sort().pop();
+    if (maxDate) datePick.value = maxDate;
+
+    const refresh = () => {
+      const filterText = (searchEl.value || "").trim().toLowerCase();
+      renderLatest(loaded, filterText);
+      const month = datePick.value;
+      if (month) renderSelected(loaded, month, filterText);
+    };
+
+    datePick.addEventListener("change", refresh);
+    searchEl.addEventListener("input", refresh);
+
+    refresh();
+  }
+
+  main().catch(e => {
+    setBadge("Erreur", "err");
+    setStatus("Erreur: " + (e.message || e));
+  });
+</script>
+</body>
+</html>
