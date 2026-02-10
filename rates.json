@@ -17,7 +17,7 @@
     {
     "id": "euribor_12m",
     "label": "Euribor 12M",
-    "url": "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR12MD_.HSTA?format=csvdata&detail=dataonly"
+    "url": "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR1MD_.HSTA?format=csvdata&detail=dataonly"
   },
   {
     "id": "€ster",
