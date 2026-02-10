@@ -31,7 +31,7 @@
 
     <h2>Derniers cours</h2>
     <table id="latestTable">
-      <thead><tr><th>Taux</th><th>Dernière date</th><th>Dernier cours</th></tr></thead>
+      <thead><tr><th>Taux</th><th>Dernière date</th><th>Dernier cours</th><th>Statut</th></tr></thead>
       <tbody></tbody>
     </table>
 
@@ -136,12 +136,14 @@ async function loadRatesList() {
   throw new Error("Impossible de charger rates.json. Dernier essai: " + lastErr);
 }
 
-  async function loadOneRate(rate) {
-    const res = await fetch(rate.url, { cache: "no-store" });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const { latest, map } = parseCsv(await res.text());
-    return { ...rate, latest, map };
+async function loadOneRate(rate) {
+  const res = await fetch(rate.url, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`Taux "${rate.label}" : HTTP ${res.status} sur ${rate.url}`);
   }
+  const { latest, map } = parseCsv(await res.text());
+  return { ...rate, latest, map, _ok: true, _error: "" };
+}
 
   function renderLatest(list, filterText) {
     const tbody = document.querySelector("#latestTable tbody");
@@ -151,10 +153,11 @@ async function loadRatesList() {
       .forEach(r => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
-          <td>${r.label}</td>
-          <td>${formatDate(r.latest?.time)}</td>
-          <td>${formatNumber(r.latest?.val)}</td>
-        `;
+  <td>${r.label}</td>
+  <td>${formatDate(r.latest?.time)}</td>
+  <td>${formatNumber(r.latest?.val)}</td>
+  <td>${r._ok ? "OK" : r._error}</td>
+`;
         tbody.appendChild(tr);
       });
   }
@@ -195,10 +198,15 @@ async function loadRatesList() {
     const rates = await loadRatesList();
 
     setStatus("Chargement des taux (" + rates.length + ")…");
-    const loaded = [];
-    for (const r of rates) {
-      loaded.push(await loadOneRate(r));
-    }
+const loaded = [];
+for (const r of rates) {
+  try {
+    loaded.push(await loadOneRate(r));
+  } catch (e) {
+    loaded.push({ ...r, latest: null, map: new Map(), _ok: false, _error: (e.message || String(e)) });
+  }
+}
+
 
     setBadge("OK");
     setStatus("");
