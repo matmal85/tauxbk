@@ -102,7 +102,7 @@
   }
 
   async function loadRatesList() {
-    const res = await fetch("rates.json", { cache: "no-store" });
+    const res = await fetch("rates.json?ts=" + Date.now());
     if (!res.ok) throw new Error("Impossible de charger rates.json (HTTP " + res.status + ")");
     return await res.json();
   }
