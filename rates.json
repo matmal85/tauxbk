@@ -1,0 +1,22 @@
+[
+  {
+    "id": "euribor_1m",
+    "label": "Euribor 1M",
+    "url": "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR1MD_.HSTA?format=csvdata&detail=dataonly"
+  },
+  {
+    "id": "euribor_3m",
+    "label": "Euribor 3M",
+    "url": "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR3MD_.HSTA?format=csvdata&detail=dataonly"
+  },
+    {
+    "id": "euribor_6m",
+    "label": "Euribor 6M",
+    "url": "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR6MD_.HSTA?format=csvdata&detail=dataonly"
+  },
+    {
+    "id": "euribor_12m",
+    "label": "Euribor 12M",
+    "url": "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR12MD_.HSTA?format=csvdata&detail=dataonly"
+  }
+]
