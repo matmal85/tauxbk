@@ -2,10 +2,71 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <title>Taux</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Euribor</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
+    .box { max-width: 950px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border-bottom: 1px solid #ddd; padding: 10px; text-align: left; }
+    select, input { padding: 8px; font-size: 14px; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .muted { color: #666; font-size: 13px; margin-top: 6px; }
+    .pill { display:inline-block; padding:3px 8px; border:1px solid #ddd; border-radius:999px; font-size:12px; }
+  </style>
 </head>
 <body>
-  <h1>Taux ECB</h1>
-  <p>Si tu vois cette page, ton site fonctionne 🎉</p>
-</body>
-</html>
+  <div class="box">
+    <h1>Euribor (ECB)</h1>
+
+    <div class="row">
+      <label for="datePick">Date (mois)</label>
+      <input id="datePick" type="month" />
+
+      <label for="seriesPick">Série</label>
+      <select id="seriesPick"></select>
+
+      <span class="pill" id="badge">—</span>
+    </div>
+
+    <div class="muted" id="status"></div>
+
+    <h2>Dernières valeurs</h2>
+    <table id="latestTable">
+      <thead><tr><th>Série</th><th>Dernière date</th><th>Dernière valeur</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <h2>Valeur à la date sélectionnée</h2>
+    <table id="selectedTable">
+      <thead><tr><th>Série</th><th>Date</th><th>Valeur</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <p class="muted">Source : ECB SDMX API (csvdata)</p>
+  </div>
+
+<script>
+  const SERIES = [
+    { id: "euribor_1m",  label: "Euribor 1M",  url: "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR1MD_.HSTA?format=csvdata&detail=dataonly" },
+    { id: "euribor_3m",  label: "Euribor 3M",  url: "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR3MD_.HSTA?format=csvdata&detail=dataonly" },
+    { id: "euribor_6m",  label: "Euribor 6M",  url: "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR6MD_.HSTA?format=csvdata&detail=dataonly" },
+    { id: "euribor_12m", label: "Euribor 12M", url: "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR12MD_.HSTA?format=csvdata&detail=dataonly" },
+  ];
+
+  const statusEl = document.getElementById("status");
+  const badgeEl  = document.getElementById("badge");
+  const seriesPick = document.getElementById("seriesPick");
+  const datePick = document.getElementById("datePick");
+
+  function setStatus(msg) { statusEl.textContent = msg; }
+
+  function parseCsv(text) {
+    const lines = text.trim().split(/\r?\n/);
+    const headers = lines[0].split(",");
+    const idxTime = headers.indexOf("TIME_PERIOD");
+    const idxVal  = headers.indexOf("OBS_VALUE");
+    if (idxTime === -1 || idxVal === -1) throw new Error("Colonnes TIME_PERIOD / OBS_VALUE introuvables");
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols =
